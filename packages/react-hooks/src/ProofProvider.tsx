@@ -1,4 +1,4 @@
-import type { Agent, ProofState, ProofStateChangedEvent, ProofRecord } from '@aries-framework/core'
+import type { Agent, ProofState, ProofStateChangedEvent, ProofDeletedEvent, ProofRecord } from '@aries-framework/core'
 
 import { ProofEventTypes } from '@aries-framework/core'
 import * as React from 'react'
@@ -53,7 +53,7 @@ const ProofProvider: React.FC<Props> = ({ agent, children }) => {
 
   useEffect(() => {
     if (!proofState.loading) {
-      const listener = (event: ProofStateChangedEvent) => {
+      const stateChangedListener = (event: ProofStateChangedEvent) => {
         const newProofsState = [...proofState.proofs]
         const index = newProofsState.findIndex((proof) => proof.id === event.payload.proofRecord.id)
         if (index > -1) {
@@ -68,10 +68,20 @@ const ProofProvider: React.FC<Props> = ({ agent, children }) => {
         })
       }
 
-      agent?.events.on(ProofEventTypes.ProofStateChanged, listener)
+      const deletedListener = async (event: ProofDeletedEvent) => {
+        const newProofsState = [...proofState.proofs.filter((proof) => proof.id != event.payload.proofRecord.id)]
+        setProofState({
+          loading: proofState.loading,
+          proofs: newProofsState,
+        })
+      }
+
+      agent?.events.on(ProofEventTypes.ProofStateChanged, stateChangedListener)
+      agent?.events.on(ProofEventTypes.ProofDeleted, deletedListener)
 
       return () => {
-        agent?.events.off(ProofEventTypes.ProofStateChanged, listener)
+        agent?.events.off(ProofEventTypes.ProofStateChanged, stateChangedListener)
+        agent?.events.off(ProofEventTypes.ProofDeleted, deletedListener)
       }
     }
   }, [proofState, agent])

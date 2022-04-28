@@ -1,4 +1,10 @@
-import type { Agent, ConnectionState, ConnectionStateChangedEvent, ConnectionRecord } from '@aries-framework/core'
+import type {
+  Agent,
+  ConnectionState,
+  ConnectionStateChangedEvent,
+  ConnectionDeletedEvent,
+  ConnectionRecord,
+} from '@aries-framework/core'
 
 import { ConnectionEventTypes } from '@aries-framework/core'
 import * as React from 'react'
@@ -56,7 +62,7 @@ const ConnectionProvider: React.FC<Props> = ({ agent, children }) => {
 
   useEffect(() => {
     if (!connectionState.loading) {
-      const listener = (event: ConnectionStateChangedEvent) => {
+      const stateChangedListener = (event: ConnectionStateChangedEvent) => {
         const newConnectionsState = [...connectionState.connections]
 
         const index = newConnectionsState.findIndex((connection) => connection.id === event.payload.connectionRecord.id)
@@ -71,10 +77,23 @@ const ConnectionProvider: React.FC<Props> = ({ agent, children }) => {
           connections: newConnectionsState,
         })
       }
-      agent?.events.on(ConnectionEventTypes.ConnectionStateChanged, listener)
+
+      const deletedListener = async (event: ConnectionDeletedEvent) => {
+        const newConnectionsState = [
+          ...connectionState.connections.filter((connection) => connection.id != event.payload.connectionRecord.id),
+        ]
+        setConnectionState({
+          loading: connectionState.loading,
+          connections: newConnectionsState,
+        })
+      }
+
+      agent?.events.on(ConnectionEventTypes.ConnectionStateChanged, stateChangedListener)
+      agent?.events.on(ConnectionEventTypes.ConnectionDeleted, deletedListener)
 
       return () => {
-        agent?.events.off(ConnectionEventTypes.ConnectionStateChanged, listener)
+        agent?.events.off(ConnectionEventTypes.ConnectionStateChanged, stateChangedListener)
+        agent?.events.off(ConnectionEventTypes.ConnectionDeleted, deletedListener)
       }
     }
   }, [connectionState, agent])
