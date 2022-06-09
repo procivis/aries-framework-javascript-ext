@@ -1,10 +1,4 @@
-import type {
-  Agent,
-  ConnectionState,
-  DidExchangeState,
-  RecordDeletedEvent,
-  RecordUpdatedEvent,
-} from '@aries-framework/core'
+import type { Agent, DidExchangeState, RecordDeletedEvent, RecordUpdatedEvent } from '@aries-framework/core'
 
 import { ConnectionRecord, filterByRecordType, RepositoryEventTypes } from '@aries-framework/core'
 import * as React from 'react'
