@@ -1,6 +1,6 @@
-import type { Agent, ProofState, ProofStateChangedEvent, ProofDeletedEvent, ProofRecord } from '@aries-framework/core'
+import type { Agent, ProofState, RecordUpdatedEvent, RecordDeletedEvent } from '@aries-framework/core'
 
-import { ProofEventTypes } from '@aries-framework/core'
+import { filterByRecordType, RepositoryEventTypes, ProofRecord } from '@aries-framework/core'
 import * as React from 'react'
 import { createContext, useState, useEffect, useContext, useMemo } from 'react'
 
@@ -53,13 +53,13 @@ const ProofProvider: React.FC<Props> = ({ agent, children }) => {
 
   useEffect(() => {
     if (!proofState.loading) {
-      const stateChangedListener = (event: ProofStateChangedEvent) => {
+      const updatedListener = (event: RecordUpdatedEvent<ProofRecord>) => {
         const newProofsState = [...proofState.proofs]
-        const index = newProofsState.findIndex((proof) => proof.id === event.payload.proofRecord.id)
+        const index = newProofsState.findIndex((proof) => proof.id === event.payload.record.id)
         if (index > -1) {
-          newProofsState[index] = event.payload.proofRecord
+          newProofsState[index] = event.payload.record
         } else {
-          newProofsState.unshift(event.payload.proofRecord)
+          newProofsState.unshift(event.payload.record)
         }
 
         setProofState({
@@ -68,20 +68,27 @@ const ProofProvider: React.FC<Props> = ({ agent, children }) => {
         })
       }
 
-      const deletedListener = async (event: ProofDeletedEvent) => {
-        const newProofsState = [...proofState.proofs.filter((proof) => proof.id != event.payload.proofRecord.id)]
+      const deletedListener = (event: RecordDeletedEvent<ProofRecord>) => {
+        const newProofsState = [...proofState.proofs.filter((proof) => proof.id != event.payload.record.id)]
         setProofState({
           loading: proofState.loading,
           proofs: newProofsState,
         })
       }
 
-      agent?.events.on(ProofEventTypes.ProofStateChanged, stateChangedListener)
-      agent?.events.on(ProofEventTypes.ProofDeleted, deletedListener)
+      const updateSubscription = agent?.events
+        .observable(RepositoryEventTypes.RecordUpdated)
+        .pipe(filterByRecordType(ProofRecord.type))
+        .subscribe((e) => updatedListener(e as RecordUpdatedEvent<ProofRecord>))
+
+      const deleteSubscription = agent?.events
+        .observable(RepositoryEventTypes.RecordDeleted)
+        .pipe(filterByRecordType(ProofRecord.type))
+        .subscribe((e) => deletedListener(e as RecordDeletedEvent<ProofRecord>))
 
       return () => {
-        agent?.events.off(ProofEventTypes.ProofStateChanged, stateChangedListener)
-        agent?.events.off(ProofEventTypes.ProofDeleted, deletedListener)
+        updateSubscription?.unsubscribe()
+        deleteSubscription?.unsubscribe()
       }
     }
   }, [proofState, agent])

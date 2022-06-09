@@ -1,12 +1,12 @@
 import type {
   Agent,
   ConnectionState,
-  ConnectionStateChangedEvent,
-  ConnectionDeletedEvent,
-  ConnectionRecord,
+  DidExchangeState,
+  RecordDeletedEvent,
+  RecordUpdatedEvent,
 } from '@aries-framework/core'
 
-import { ConnectionEventTypes } from '@aries-framework/core'
+import { ConnectionRecord, filterByRecordType, RepositoryEventTypes } from '@aries-framework/core'
 import * as React from 'react'
 import { createContext, useState, useEffect, useContext, useMemo } from 'react'
 
@@ -30,7 +30,7 @@ export const useConnectionById = (id: string): ConnectionRecord | undefined => {
   return connections.find((c: ConnectionRecord) => c.id === id)
 }
 
-export const useConnectionByState = (state: ConnectionState): ConnectionRecord[] => {
+export const useConnectionByState = (state: DidExchangeState): ConnectionRecord[] => {
   const { connections } = useConnections()
   const filteredConnections = useMemo(
     () => connections.filter((c: ConnectionRecord) => c.state === state),
@@ -62,14 +62,14 @@ const ConnectionProvider: React.FC<Props> = ({ agent, children }) => {
 
   useEffect(() => {
     if (!connectionState.loading) {
-      const stateChangedListener = (event: ConnectionStateChangedEvent) => {
+      const updatedListener = (event: RecordUpdatedEvent<ConnectionRecord>) => {
         const newConnectionsState = [...connectionState.connections]
 
-        const index = newConnectionsState.findIndex((connection) => connection.id === event.payload.connectionRecord.id)
+        const index = newConnectionsState.findIndex((connection) => connection.id === event.payload.record.id)
         if (index > -1) {
-          newConnectionsState[index] = event.payload.connectionRecord
+          newConnectionsState[index] = event.payload.record
         } else {
-          newConnectionsState.unshift(event.payload.connectionRecord)
+          newConnectionsState.unshift(event.payload.record)
         }
 
         setConnectionState({
@@ -78,9 +78,9 @@ const ConnectionProvider: React.FC<Props> = ({ agent, children }) => {
         })
       }
 
-      const deletedListener = async (event: ConnectionDeletedEvent) => {
+      const deletedListener = (event: RecordDeletedEvent<ConnectionRecord>) => {
         const newConnectionsState = [
-          ...connectionState.connections.filter((connection) => connection.id != event.payload.connectionRecord.id),
+          ...connectionState.connections.filter((connection) => connection.id !== event.payload.record.id),
         ]
         setConnectionState({
           loading: connectionState.loading,
@@ -88,12 +88,19 @@ const ConnectionProvider: React.FC<Props> = ({ agent, children }) => {
         })
       }
 
-      agent?.events.on(ConnectionEventTypes.ConnectionStateChanged, stateChangedListener)
-      agent?.events.on(ConnectionEventTypes.ConnectionDeleted, deletedListener)
+      const updateSubscription = agent?.events
+        .observable(RepositoryEventTypes.RecordUpdated)
+        .pipe(filterByRecordType(ConnectionRecord.type))
+        .subscribe((e) => updatedListener(e as RecordUpdatedEvent<ConnectionRecord>))
+
+      const deleteSubscription = agent?.events
+        .observable(RepositoryEventTypes.RecordDeleted)
+        .pipe(filterByRecordType(ConnectionRecord.type))
+        .subscribe((e) => deletedListener(e as RecordDeletedEvent<ConnectionRecord>))
 
       return () => {
-        agent?.events.off(ConnectionEventTypes.ConnectionStateChanged, stateChangedListener)
-        agent?.events.off(ConnectionEventTypes.ConnectionDeleted, deletedListener)
+        updateSubscription?.unsubscribe()
+        deleteSubscription?.unsubscribe()
       }
     }
   }, [connectionState, agent])
